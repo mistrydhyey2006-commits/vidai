@@ -15,6 +15,9 @@ from moviepy.editor import (
     ImageClip, AudioFileClip, concatenate_videoclips, CompositeVideoClip
 )
 from PIL import Image
+from PIL import Image as PILImage
+if not hasattr(PILImage, 'ANTIALIAS'):
+    PILImage.ANTIALIAS = PILImage.LANCZOS
 import boto3  # For Cloudflare R2 storage
 import tempfile
 import logging
