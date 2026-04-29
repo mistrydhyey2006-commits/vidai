@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VidAI — Deploy Guide</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #080a0f; --bg2: #0f1118; --bg3: #161921; --bg4: #1d2030;
+    --border: rgba(255,255,255,0.06); --border2: rgba(255,255,255,0.12);
+    --text: #eceef4; --text2: #8890a8; --text3: #464d62;
+    --accent: #5865f2; --accent-light: #7c87ff; --accent-bg: rgba(88,101,242,0.1);
+    --green: #23d18b; --green-bg: rgba(35,209,139,0.08);
+    --amber: #fbbf24; --amber-bg: rgba(251,191,36,0.08);
+    --teal: #2dd4bf; --teal-bg: rgba(45,212,191,0.08);
+    --purple: #a78bfa; --purple-bg: rgba(167,139,250,0.08);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); display: flex; min-height: 100vh; }
+
+  /* Sidebar */
+  .sidebar {
+    width: 260px; min-width: 260px; background: var(--bg2);
+    border-right: 1px solid var(--border); height: 100vh;
+    position: sticky; top: 0; overflow-y: auto; padding: 24px 0;
+  }
+  .sidebar-logo {
+    display: flex; align-items: center; gap: 9px;
+    padding: 0 20px 20px; border-bottom: 1px solid var(--border);
+    margin-bottom: 16px;
+  }
+  .logo-icon { width: 30px; height: 30px; background: var(--accent); border-radius: 7px; display: flex; align-items: center; justify-content: center; }
+  .logo-name { font-family: 'Syne', sans-serif; font-size: 17px; font-weight: 800; }
+  .logo-sub { font-size: 11px; color: var(--text3); margin-left: 39px; }
+  .nav { padding: 0 10px; }
+  .nav-label { font-size: 10px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.08em; padding: 10px 10px 4px; font-weight: 500; }
+  .nav-item { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 7px; font-size: 13.5px; color: var(--text2); cursor: pointer; transition: all 0.15s; border: none; background: none; width: 100%; text-align: left; }
+  .nav-item:hover { background: var(--bg3); color: var(--text); }
+  .nav-item.active { background: var(--accent-bg); color: var(--accent-light); font-weight: 500; }
+  .nav-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+  .check-badge { margin-left: auto; font-size: 11px; background: var(--green-bg); color: var(--green); padding: 2px 7px; border-radius: 20px; }
+
+  /* Main */
+  .main { flex: 1; max-width: 800px; padding: 52px 56px; overflow-y: auto; }
+  .page { display: none; animation: fadein 0.2s ease; }
+  .page.active { display: block; }
+  @keyframes fadein { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+
+  .eyebrow { font-size: 11.5px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 10px; }
+  h1 { font-family: 'Syne', sans-serif; font-size: 30px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 14px; line-height: 1.2; }
+  .lead { font-size: 15.5px; color: var(--text2); line-height: 1.8; margin-bottom: 32px; }
+  h2 { font-family: 'Syne', sans-serif; font-size: 17px; font-weight: 700; margin: 32px 0 12px; padding-top: 8px; border-top: 1px solid var(--border); }
+  h3 { font-size: 14px; font-weight: 500; color: var(--text); margin: 20px 0 8px; }
+  p { font-size: 14.5px; color: var(--text2); line-height: 1.8; margin-bottom: 12px; }
+  .divider { height: 1px; background: var(--border); margin: 28px 0; }
+
+  /* Step blocks */
+  .step { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; padding: 20px 24px; margin-bottom: 14px; }
+  .step-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .step-num { width: 28px; height: 28px; border-radius: 50%; background: var(--accent-bg); color: var(--accent-light); font-size: 13px; font-weight: 700; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .step-title { font-size: 15px; font-weight: 500; color: var(--text); }
+  .step p { margin-bottom: 8px; }
+
+  /* Code */
+  .code { background: #06080d; border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; margin: 10px 0; overflow-x: auto; }
+  .code-top { font-size: 10.5px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 10px; }
+  pre { font-family: 'Fira Code', monospace; font-size: 13px; line-height: 1.85; white-space: pre; color: #9daeff; }
+  .cmd { color: #7dd3fc; }
+  .cmt { color: #374151; }
+  .str { color: #86efac; }
+  .var { color: #fbbf24; }
+
+  /* Callouts */
+  .tip { background: var(--teal-bg); border-left: 3px solid var(--teal); border-radius: 0 10px 10px 0; padding: 13px 16px; margin: 14px 0; font-size: 14px; color: var(--text2); line-height: 1.7; display: flex; gap: 10px; }
+  .warn { background: var(--amber-bg); border-left: 3px solid var(--amber); border-radius: 0 10px 10px 0; padding: 13px 16px; margin: 14px 0; font-size: 14px; color: var(--text2); line-height: 1.7; display: flex; gap: 10px; }
+  .info { background: var(--accent-bg); border-left: 3px solid var(--accent); border-radius: 0 10px 10px 0; padding: 13px 16px; margin: 14px 0; font-size: 14px; color: var(--text2); line-height: 1.7; display: flex; gap: 10px; }
+  .success { background: var(--green-bg); border-left: 3px solid var(--green); border-radius: 0 10px 10px 0; padding: 13px 16px; margin: 14px 0; font-size: 14px; color: var(--text2); line-height: 1.7; display: flex; gap: 10px; }
+  .ci { flex-shrink: 0; font-size: 16px; }
+
+  /* Grid */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0; }
+  .card { background: var(--bg2); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; }
+  .card-icon { font-size: 22px; margin-bottom: 10px; }
+  .card-title { font-size: 14px; font-weight: 500; margin-bottom: 5px; }
+  .card-desc { font-size: 13px; color: var(--text2); line-height: 1.6; }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; margin: 14px 0; }
+  th { background: var(--bg3); color: var(--text3); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; padding: 9px 13px; text-align: left; border-bottom: 1px solid var(--border); }
+  td { padding: 10px 13px; color: var(--text2); border-bottom: 1px solid var(--border); vertical-align: middle; }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: var(--bg3); }
+  .pill { display: inline-block; font-size: 11px; font-weight: 500; padding: 2px 8px; border-radius: 20px; }
+  .pfree { background: var(--green-bg); color: var(--green); }
+  .pfree2 { background: var(--accent-bg); color: var(--accent-light); }
+
+  /* Page nav */
+  .pnav { display: flex; justify-content: space-between; margin-top: 44px; padding-top: 24px; border-top: 1px solid var(--border); }
+  .pnav-btn { display: flex; flex-direction: column; gap: 3px; cursor: pointer; padding: 11px 16px; border: 1px solid var(--border); border-radius: 9px; background: var(--bg2); transition: all 0.18s; }
+  .pnav-btn:hover { border-color: var(--accent); background: var(--accent-bg); }
+  .pnav-label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: 0.05em; }
+  .pnav-title { font-size: 13.5px; color: var(--accent-light); font-weight: 500; }
+  .pnav-btn.right { text-align: right; }
+
+  /* Progress */
+  .sidebar-footer { padding: 20px; border-top: 1px solid var(--border); margin-top: auto; }
+  .prog-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--text3); margin-bottom: 8px; }
+  .prog-track { height: 4px; background: var(--bg3); border-radius: 4px; overflow: hidden; }
+  .prog-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--green)); border-radius: 4px; transition: width 0.4s; }
+
+  @media (max-width: 768px) {
+    .sidebar { display: none; }
+    .main { padding: 28px 20px; }
+    .grid2 { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="sidebar-logo">
+    <div class="logo-icon">
+      <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+        <polygon points="2,1 13,7 2,13" fill="white"/>
+      </svg>
+    </div>
+    <span class="logo-name">VidAI</span>
+  </div>
+  <div class="logo-sub">Deployment Guide</div>
+
+  <nav class="nav" style="margin-top:12px">
+    <div class="nav-label">Overview</div>
+    <button class="nav-item active" onclick="show('overview',this)"><span class="nav-dot" style="background:#5865f2"></span>Introduction</button>
+    <button class="nav-item" onclick="show('structure',this)"><span class="nav-dot" style="background:#8890a8"></span>Project structure</button>
+
+    <div class="nav-label">Backend</div>
+    <button class="nav-item" onclick="show('b-setup',this)"><span class="nav-dot" style="background:#7dd3fc"></span>1. GitHub repo</button>
+    <button class="nav-item" onclick="show('b-render',this)"><span class="nav-dot" style="background:#5865f2"></span>2. Deploy on Render</button>
+    <button class="nav-item" onclick="show('b-env',this)"><span class="nav-dot" style="background:#a78bfa"></span>3. Set env variables</button>
+    <button class="nav-item" onclick="show('b-ollama',this)"><span class="nav-dot" style="background:#fbbf24"></span>4. Ollama on Render</button>
+
+    <div class="nav-label">Storage</div>
+    <button class="nav-item" onclick="show('r2',this)"><span class="nav-dot" style="background:#f97316"></span>5. Cloudflare R2</button>
+
+    <div class="nav-label">Frontend</div>
+    <button class="nav-item" onclick="show('frontend',this)"><span class="nav-dot" style="background:#23d18b"></span>6. GitHub Pages</button>
+    <button class="nav-item" onclick="show('connect',this)"><span class="nav-dot" style="background:#2dd4bf"></span>7. Connect frontend</button>
+
+    <div class="nav-label">Final</div>
+    <button class="nav-item" onclick="show('test',this)"><span class="nav-dot" style="background:#23d18b"></span>8. Test & go live</button>
+    <button class="nav-item" onclick="show('customise',this)"><span class="nav-dot" style="background:#8890a8"></span>Customise your name</button>
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="prog-label"><span>Your progress</span><span id="pct">0%</span></div>
+    <div class="prog-track"><div class="prog-fill" id="prog"></div></div>
+  </div>
+</aside>
+
+<main class="main">
+
+<!-- OVERVIEW -->
+<div class="page active" id="page-overview">
+  <div class="eyebrow">Getting Started</div>
+  <h1>Deploy VidAI Live 🚀</h1>
+  <p class="lead">This guide takes you from your downloaded files to a fully live website where anyone in the world can open it, type a topic, and get an AI-generated video. Everything is free.</p>
+
+  <div class="grid2">
+    <div class="card"><div class="card-icon">🖥</div><div class="card-title">Frontend</div><div class="card-desc">The website users see. Hosted free on GitHub Pages. You already know GitHub!</div></div>
+    <div class="card"><div class="card-icon">⚙️</div><div class="card-title">Backend</div><div class="card-desc">Python server that makes the videos. Deployed free on Render.com.</div></div>
+    <div class="card"><div class="card-icon">🗄</div><div class="card-title">Storage</div><div class="card-desc">Where videos are saved. Cloudflare R2 — free 10GB tier, no credit card.</div></div>
+    <div class="card"><div class="card-icon">🤖</div><div class="card-title">AI Model</div><div class="card-desc">Mistral runs inside your Render server. Researches topics and writes scripts.</div></div>
+  </div>
+
+  <div class="info"><span class="ci">⏱</span><div>Total setup time: about <strong>45–60 minutes</strong> following this guide step by step. You'll have a live URL at the end.</div></div>
+
+  <h2>What you need</h2>
+  <table>
+    <thead><tr><th>Account</th><th>Used for</th><th>Cost</th></tr></thead>
+    <tbody>
+      <tr><td><strong>GitHub</strong></td><td>Store code + host frontend</td><td><span class="pill pfree">Free</span></td></tr>
+      <tr><td><strong>Render.com</strong></td><td>Run Python backend server</td><td><span class="pill pfree">Free tier</span></td></tr>
+      <tr><td><strong>Cloudflare</strong></td><td>Store generated videos (R2)</td><td><span class="pill pfree">Free 10GB</span></td></tr>
+      <tr><td><strong>Pexels</strong></td><td>Stock photo API for videos</td><td><span class="pill pfree">Free</span></td></tr>
+    </tbody>
+  </table>
+
+  <div class="pnav">
+    <div></div>
+    <div class="pnav-btn right" onclick="show('structure', document.querySelector('[onclick=\"show(\'structure\',this)\"]'))">
+      <div class="pnav-label">Next →</div>
+      <div class="pnav-title">Project structure</div>
+    </div>
+  </div>
+</div>
+
+<!-- STRUCTURE -->
+<div class="page" id="page-structure">
+  <div class="eyebrow">Overview</div>
+  <h1>Project Structure</h1>
+  <p class="lead">Your downloaded zip contains two folders. Here's what everything does.</p>
+
+  <div class="code">
+    <div class="code-top">Folder layout</div>
+    <pre><span class="var">vidai/</span>
+├── <span class="var">frontend/</span>
+│   └── index.html          <span class="cmt"># The website — goes on GitHub Pages</span>
+│
+└── <span class="var">backend/</span>
+    ├── app.py              <span class="cmt"># Python Flask server — goes on Render</span>
+    ├── requirements.txt    <span class="cmt"># Python packages to install</span>
+    └── render.yaml         <span class="cmt"># Render.com config (auto-deploy)</span></pre>
+  </div>
+
+  <div class="tip"><span class="ci">💡</span><div>The <strong>frontend</strong> and <strong>backend</strong> are deployed separately and talk to each other via API calls. This is how all modern web apps work.</div></div>
+
+  <h2>Flow of a video request</h2>
+  <div class="step">
+    <div class="step-head"><div class="step-num">1</div><div class="step-title">User opens your site (GitHub Pages)</div></div>
+    <p>Types a topic and clicks Generate Video.</p>
+  </div>
+  <div class="step">
+    <div class="step-head"><div class="step-num">2</div><div class="step-title">Frontend sends request to backend (Render)</div></div>
+    <p>JavaScript sends the topic, voice, duration to your Python server via API.</p>
+  </div>
+  <div class="step">
+    <div class="step-head"><div class="step-num">3</div><div class="step-title">Backend generates the video</div></div>
+    <p>Ollama writes script → Pexels fetches images → Edge TTS makes voice → MoviePy renders MP4.</p>
+  </div>
+  <div class="step">
+    <div class="step-head"><div class="step-num">4</div><div class="step-title">Video uploaded to Cloudflare R2</div></div>
+    <p>The finished MP4 is stored in R2 and a public URL is returned to the user.</p>
+  </div>
+
+  <div class="pnav">
+    <div class="pnav-btn" onclick="showById('overview')"><div class="pnav-label">← Previous</div><div class="pnav-title">Introduction</div></div>
+    <div class="pnav-btn right" onclick="showById('b-setup')"><div class="pnav-label">Next →</div><div class="pnav-title">1. GitHub repo</div></div>
+  </div>
+</div>
+
+<!-- STEP 1 - GITHUB -->
+<div class="page" id="page-b-setup">
+  <div class="eyebrow">Backend · Step 1</div>
+  <h1>Create GitHub Repository</h1>
+  <p class="lead">Push both folders to GitHub. Render.com will pull your code directly from there.</p>
+
+  <div class="step">
+    <div class="step-head"><div class="step-num">1</div><div class="step-title">Create a new repo on GitHub</div></div>
+    <p>Go to <strong>github.com/new</strong>. Name it <code style="background:var(--bg3);padding:1px 6px;border-radius:4px;font-size:12px">vidai</code>. Set it to <strong>Public</strong>. Click Create.</p>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><div class="step-num">2</div><div class="step-title">Upload your files</div></div>
+    <p>Open the repo → click <strong>Add file → Upload files</strong>. Upload the entire <code style="background:var(--bg3);padding:1px 6px;border-radius:4px;font-size:12px">vidai</code> folder (drag and drop). Commit.</p>
+  </div>
+
+  <p>OR if you prefer command line:</p>
+  <div class="code">
+    <div class="code-top">Command Prompt — from inside your vidai folder</div>
+    <pre><span class="cmd">git init</span>
+<span class="cmd">git add .</span>
+<span class="cmd">git commit -m "Initial VidAI project"</span>
+<span class="cmd">git branch -M main</span>
+<span class="cmd">git remote add origin https://github.com/YOURUSERNAME/vidai.git</span>
+<span class="cmd">git push -u origin main</span></pre>
+  </div>
+
+  <div class="warn"><span class="ci">⚠️</span><div>Replace <strong>YOURUSERNAME</strong> with your actual GitHub username in the remote URL.</div></div>
+
+  <div class="pnav">
+    <div class="pnav-btn" onclick="showById('structure')"><div class="pnav-label">← Previous</div><div class="pnav-title">Project structure</div></div>
+    <div class="pnav-btn right" onclick="showById('b-render')"><div class="pnav-label">Next →</div><div class="pnav-title">2. Deploy on Render</div></div>
+  </div>
+</div>
+
+<!-- STEP 2 - RENDER -->
+<div class="page" id="page-b-render">
+  <div class="eyebrow">Backend · Step 2</div>
+  <h1>Deploy Backend on Render.com</h1>
+  <p class="lead">Render.com will host your Python server for free and auto-deploy every time you push to GitHub.</p>
+
+  <div class="step">
+    <div class="step-head"><div class="step-num">1</div><div class="step-title">Sign up at render.com</div></div>
+    <p>Go to <strong>render.com</strong> → Sign up with your GitHub account (easier — it connects automatically).</p>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><div class="step-num">2</div><div class="step-title">Create a new Web Service</div></div>
+    <p>Click <strong>New +</strong> → <strong>Web Service</strong> → Connect your GitHub repo <code style="background:var(--bg3);padding:2px 6px;border-radius:4px;font-size:12px">vidai</code>.</p>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><div class="step-num">3</div><div class="step-title">Configure the service</div></div>
+    <p>Fill in these settings exactly:</p>
+    <table>
+      <thead><tr><th>Setting</th><th>Value</th></tr></thead>
+      <tbody>
+        <tr><td>Name</td><td>vidai-backend</td></tr>
+        <tr><td>Root Directory</td><td>backend</td></tr>
+        <tr><td>Runtime</td><td>Python 3</td></tr>
+        <tr><td>Build Command</td><td><code style="font-family:monospace;font-size:12px">pip install -r requirements.txt</code></td></tr>
+        <tr><td>Start Command</td><td><code style="font-family:monospace;font-size:12px">gunicorn app:app --workers 2 --timeout 300</code></td></tr>
+        <tr><td>Instance Type</td><td>Free</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><div class="step-num">4</div><div class="step-title">Click "Create Web Service"</div></div>
+    <p>Render will start building. This takes 3–5 minutes the first time. You'll get a URL like <code style="background:var(--bg3);padding:2px 6px;border-radius:4px;font-size:12px">https://vidai-backend.onrender.com</code> — <strong>copy this URL, you'll need it later.</strong></p>
+  </div>
+
+  <div class="tip"><span class="ci">💡</span><div>On the free tier, Render "sleeps" your server after 15 minutes of inactivity. First request after sleep takes ~30 seconds to wake up. This is fine for personal use.</div></div>
+
+  <div class="pnav">
+    <div class="pnav-btn" onclick="showById('b-setup')"><div class="pnav-label">← Previous</div><div class="pnav-title">1. GitHub repo</div></div>
+    <div class="pnav-btn right" onclick="showById('b-env')"><div class="pnav-label">Next →</div><div class="pnav-title">3. Environment variables</div></div>
+  </div>
+</div>
+
+<!-- STEP 3 - ENV VARS -->
+<div class="page" id="page-b-env">
+  <div class="eyebrow">Backend · Step 3</div>
+  <h1>Set Environment Variables</h1>
+  <p class="lead">These are your secret API keys. You add them to Render's dashboard — never put them in your code files.</p>
+
+  <p>In your Render service dashboard → click <strong>Environment</strong> → Add the following:</p>
+
+  <table>
+    <thead><tr><th>Key</th><th>Value</th><th>Where to get it</th></tr></thead>
+    <tbody>
+      <tr><td><code style="font-size:12px;font-family:monospace">PEXELS_API_KEY</code></td><td>Your Pexels API key</td><td>pexels.com/api</td></tr>
+      <tr><td><code style="font-size:12px;font-family:monospace">R2_ENDPOINT</code></td><td>Your R2 endpoint URL</td><td>Cloudflare dashboard (next step)</td></tr>
+      <tr><td><code style="font-size:12px;font-family:monospace">R2_ACCESS_KEY</code></td><td>R2 access key ID</td><td>Cloudflare dashboard (next step)</td></tr>
+      <tr><td><code style="font-size:12px;font-family:monospace">R2_SECRET_KEY</code></td><td>R2 secret key</td><td>Cloudflare dashboard (next step)</td></tr>
+      <tr><td><code style="font-size:12px;font-family:monospace">R2_BUCKET</code></td><td>vidai-videos</td><td>Your R2 bucket name</td></tr>
+      <tr><td><code style="font-size:12px;font-family:monospace">R2_PUBLIC_URL</code></td><td>Your R2 public domain</td><td>Cloudflare dashboard (next step)</td></tr>
+    </tbody>
+  </table>
+
+  <div class="warn"><span class="ci">⚠️</span><div>You can skip the R2 variables for now and come back after completing Step 5. The server will still start without them.</div></div>
+
+  <div class="pnav">
+    <div class="pnav-btn" onclick="showById('b-render')"><div class="pnav-label">← Previous</div><div class="pnav-title">2. Deploy on Render</div></div>
+    <div class="pnav-btn right" onclick="showById('b-ollama')"><div class="pnav-label">Next →</div><div class="pnav-title">4. Ollama on Render</div></div>
+  </div>
+</div>
+
+<!-- STEP 4 - OLLAMA -->
+<div class="page" id="page-b-ollama">
+  <div class="eyebrow">Backend · Step 4</div>
+  <h1>AI Model on Render</h1>
+  <p class="lead">The free Render tier doesn't have enough RAM to run Ollama (4GB needed). Here are your two options:</p>
+
+  <div class="grid2">
+    <div class="card" style="border-color:rgba(88,101,242,0.3)">
+      <div class="card-icon">☁️</div>
+      <div class="card-title">Option A — OpenAI API (Recommended)</div>
+      <div class="card-desc">Use GPT-3.5-turbo for script writing. $5 free credit on signup. Very fast, no RAM issues.</div>
+    </div>
+    <div class="card">
+      <div class="card-icon">💻</div>
+      <div class="card-title">Option B — Render paid tier ($7/mo)</div>
+      <div class="card-desc">Upgrade to Render's Starter plan for enough RAM to run Ollama locally on the server.</div>
+    </div>
+  </div>
+
+  <h2>Option A — Use OpenAI (easiest)</h2>
+  <p>1. Sign up at <strong>platform.openai.com</strong> → Get API key (free $5 credit)<br>
+  2. Add <code style="background:var(--bg3);padding:1px 6px;border-radius:4px;font-size:12px">OPENAI_API_KEY</code> to your Render environment variables<br>
+  3. In <code style="background:var(--bg3);padding:1px 6px;border-radius:4px;font-size:12px">app.py</code>, replace the <code style="background:var(--bg3);padding:1px 6px;border-radius:4px;font-size:12px">write_script()</code> function with:</p>
+
+  <div class="code">
+    <div class="code-top">Replace write_script() in app.py</div>
+    <pre><span class="str">import</span> openai
+
+<span class="str">def</span> write_script(topic, duration, style):
+    word_count = <span class="var">int</span>(duration * 2.2)
+    client = openai.OpenAI(api_key=os.environ.get(<span class="str">"OPENAI_API_KEY"</span>))
+    res = client.chat.completions.create(
+        model=<span class="str">"gpt-3.5-turbo"</span>,
+        messages=[{
+            <span class="str">"role"</span>: <span class="str">"user"</span>,
+            <span class="str">"content"</span>: <span class="str">f"Write a {word_count}-word video narration about: {topic}. Style: {style}. Just the spoken words, no labels."</span>
+        }]
+    )
+    <span class="str">return</span> res.choices[0].message.content.strip()</pre>
+  </div>
+
+  <p>Also add <code style="background:var(--bg3);padding:1px 6px;border-radius:4px;font-size:12px">openai</code> to your <code style="background:var(--bg3);padding:1px 6px;border-radius:4px;font-size:12px">requirements.txt</code>, push to GitHub, and Render will auto-redeploy.</p>
+
+  <div class="success"><span class="ci">✅</span><div>With OpenAI's free $5 credit you can generate roughly 500+ videos before paying anything. More than enough to get started.</div></div>
+
+  <div class="pnav">
+    <div class="pnav-btn" onclick="showById('b-env')"><div class="pnav-label">← Previous</div><div class="pnav-title">3. Environment variables</div></div>
+    <div class="pnav-btn right" onclick="showById('r2')"><div class="pnav-label">Next →</div><div class="pnav-title">5. Cloudflare R2</div></div>
+  </div>
+</div>
+
+<!-- STEP 5 - R2 -->
+<div class="page" id="page-r2">
+  <div class="eyebrow">Storage · Step 5</div>
+  <h1>Cloudflare R2 Storage</h1>
+  <p class="lead">Generated videos need to be stored somewhere publicly accessible. R2 gives you 10GB free — plenty for hundreds of videos.</p>
+
+  <div class="step">
+    <div class="step-head"><div class="step-num">1</div><div class="step-title">Sign up at cloudflare.com</div></div>
+    <p>Create a free account. No credit card needed for R2's free tier.</p>
+  </div>
+  <div class="step">
+    <div class="step-head"><div class="step-num">2</div><div class="step-title">Create an R2 bucket</div></div>
+    <p>Go to <strong>R2 Object Storage</strong> in the sidebar → <strong>Create bucket</strong> → Name it <code style="background:var(--bg3);padding:2px 6px;border-radius:4px;font-size:12px">vidai-videos</code> → Create.</p>
+  </div>
+  <div class="step">
+    <div class="step-head"><div class="step-num">3</div><div class="step-title">Enable public access</div></div>
+    <p>Inside your bucket → <strong>Settings</strong> → <strong>Public Access</strong> → Allow public access. Copy the <strong>Public Bucket URL</strong> — this is your <code style="background:var(--bg3);padding:2px 6px;border-radius:4px;font-size:12px">R2_PUBLIC_URL</code>.</p>
+  </div>
+  <div class="step">
+    <div class="step-head"><div class="step-num">4</div><div class="step-title">Get API credentials</div></div>
+    <p>Go to <strong>R2 → Manage R2 API Tokens</strong> → Create API Token → Give it <em>Object Read & Write</em> permission. Copy the <strong>Access Key ID</strong> and <strong>Secret Access Key</strong>.</p>
+  </div>
+  <div class="step">
+    <div class="step-head"><div class="step-num">5</div><div class="step-title">Find your endpoint URL</div></div>
+    <p>Your R2 endpoint looks like: <code style="background:var(--bg3);padding:2px 6px;border-radius:4px;font-size:12px">https://ACCOUNT_ID.r2.cloudflarestorage.com</code> — find it in your R2 bucket settings.</p>
+  </div>
+
+  <p>Now go back to <strong>Render → Environment</strong> and fill in all the R2 variables from Step 3.</p>
+
+  <div class="tip"><span class="ci">💡</span><div>R2 free tier includes 10GB storage and 10 million read operations per month. That's roughly 1,000+ videos stored simultaneously with no cost.</div></div>
+
+  <div class="pnav">
+    <div class="pnav-btn" onclick="showById('b-ollama')"><div class="pnav-label">← Previous</div><div class="pnav-title">4. AI Model</div></div>
+    <div class="pnav-btn right" onclick="showById('frontend')"><div class="pnav-label">Next →</div><div class="pnav-title">6. GitHub Pages</div></div>
+  </div>
+</div>
+
+<!-- STEP 6 - FRONTEND -->
+<div class="page" id="page-frontend">
+  <div class="eyebrow">Frontend · Step 6</div>
+  <h1>Host Frontend on GitHub Pages</h1>
+  <p class="lead">Your index.html becomes a live public website — for free — using GitHub Pages. No server needed for the frontend.</p>
+
+  <div class="step">
+    <div class="step-head"><div class="step-num">1</div><div class="step-title">Go to your GitHub repo settings</div></div>
+    <p>Open <strong>github.com/YOURUSERNAME/vidai</strong> → Click <strong>Settings</strong> tab at the top.</p>
+  </div>
+  <div class="step">
+    <div class="step-head"><div class="step-num">2</div><div class="step-title">Enable GitHub Pages</div></div>
+    <p>Scroll to <strong>Pages</strong> in the sidebar → Source: <strong>Deploy from a branch</strong> → Branch: <strong>main</strong> → Folder: <strong>/frontend</strong> → Save.</p>
+  </div>
+  <div class="step">
+    <div class="step-head"><div class="step-num">3</div><div class="step-title">Wait ~2 minutes</div></div>
+    <p>GitHub will build and deploy. Your site will be live at:<br>
+    <code style="background:var(--bg3);padding:4px 10px;border-radius:6px;font-size:13px;display:inline-block;margin-top:6px">https://YOURUSERNAME.github.io/vidai</code></p>
+  </div>
+
+  <div class="success"><span class="ci">🌍</span><div>Anyone in the world can now open your website URL! But videos won't generate yet until we connect the frontend to the backend in the next step.</div></div>
+
+  <div class="pnav">
+    <div class="pnav-btn" onclick="showById('r2')"><div class="pnav-label">← Previous</div><div class="pnav-title">5. Cloudflare R2</div></div>
+    <div class="pnav-btn right" onclick="showById('connect')"><div class="pnav-label">Next →</div><div class="pnav-title">7. Connect frontend</div></div>
+  </div>
+</div>
+
+<!-- STEP 7 - CONNECT -->
+<div class="page" id="page-connect">
+  <div class="eyebrow">Frontend · Step 7</div>
+  <h1>Connect Frontend to Backend</h1>
+  <p class="lead">One line to change in index.html. Point it to your Render backend URL.</p>
+
+  <p>Open <code style="background:var(--bg3);padding:2px 6px;border-radius:4px;font-size:12px">frontend/index.html</code> in VS Code. Find this line near the bottom:</p>
+
+  <div class="code">
+    <div class="code-top">Find this line in index.html (around line 280)</div>
+    <pre><span class="cmt">// IMPORTANT: Change this to your Render.com backend URL after deploying</span>
+<span class="str">const</span> BACKEND_URL = <span class="var">'https://your-vidai-backend.onrender.com'</span>;</pre>
+  </div>
+
+  <p>Replace <code style="background:var(--bg3);padding:2px 6px;border-radius:4px;font-size:12px">your-vidai-backend</code> with the actual name Render gave your service:</p>
+
+  <div class="code">
+    <div class="code-top">Replace with your actual Render URL</div>
+    <pre><span class="str">const</span> BACKEND_URL = <span class="var">'https://vidai-backend-xxxx.onrender.com'</span>;</pre>
+  </div>
+
+  <p>Save the file, commit and push to GitHub:</p>
+
+  <div class="code">
+    <div class="code-top">Push update to GitHub</div>
+    <pre><span class="cmd">git add frontend/index.html</span>
+<span class="cmd">git commit -m "Connect frontend to backend"</span>
+<span class="cmd">git push</span></pre>
+  </div>
+
+  <p>GitHub Pages will auto-update within 1–2 minutes.</p>
+
+  <div class="pnav">
+    <div class="pnav-btn" onclick="showById('frontend')"><div class="pnav-label">← Previous</div><div class="pnav-title">6. GitHub Pages</div></div>
+    <div class="pnav-btn right" onclick="showById('test')"><div class="pnav-label">Next →</div><div class="pnav-title">8. Test & go live</div></div>
+  </div>
+</div>
+
+<!-- STEP 8 - TEST -->
+<div class="page" id="page-test">
+  <div class="eyebrow">Final · Step 8</div>
+  <h1>Test & Go Live 🎉</h1>
+  <p class="lead">Everything is deployed. Let's make sure it all works end-to-end.</p>
+
+  <div class="step">
+    <div class="step-head"><div class="step-num">1</div><div class="step-title">Test backend is alive</div></div>
+    <p>Open your Render URL in browser: <code style="background:var(--bg3);padding:2px 6px;border-radius:4px;font-size:12px">https://vidai-backend-xxxx.onrender.com</code><br>
+    You should see: <code style="background:var(--bg3);padding:2px 6px;border-radius:4px;font-size:12px">{"status": "VidAI backend running"}</code></p>
+  </div>
+  <div class="step">
+    <div class="step-head"><div class="step-num">2</div><div class="step-title">Open your live website</div></div>
+    <p>Go to <code style="background:var(--bg3);padding:2px 6px;border-radius:4px;font-size:12px">https://YOURUSERNAME.github.io/vidai</code> — your homepage should load.</p>
+  </div>
+  <div class="step">
+    <div class="step-head"><div class="step-num">3</div><div class="step-title">Generate your first video!</div></div>
+    <p>Type a topic like <strong>"Benefits of yoga"</strong>, choose your settings, click <strong>Generate Video</strong>. Watch the progress steps complete. In 2–3 minutes your first video will appear.</p>
+  </div>
+
+  <div class="success"><span class="ci">🎬</span><div>If you see a video player appear with your generated video — <strong>you're live!</strong> Share your URL with anyone and they can use it too.</div></div>
+
+  <h2>Troubleshooting</h2>
+  <table>
+    <thead><tr><th>Problem</th><th>Fix</th></tr></thead>
+    <tbody>
+      <tr><td>Backend URL shows error</td><td>Check Render logs — usually a missing env variable</td></tr>
+      <tr><td>Progress bar gets stuck at images</td><td>Check your PEXELS_API_KEY is correct in Render env vars</td></tr>
+      <tr><td>Video renders but download fails</td><td>Check your R2 bucket has public access enabled</td></tr>
+      <tr><td>First request is very slow</td><td>Normal on free tier — Render sleeps after inactivity. Wait 30s.</td></tr>
+    </tbody>
+  </table>
+
+  <div class="pnav">
+    <div class="pnav-btn" onclick="showById('connect')"><div class="pnav-label">← Previous</div><div class="pnav-title">7. Connect frontend</div></div>
+    <div class="pnav-btn right" onclick="showById('customise')"><div class="pnav-label">Next →</div><div class="pnav-title">Customise your name</div></div>
+  </div>
+</div>
+
+<!-- CUSTOMISE -->
+<div class="page" id="page-customise">
+  <div class="eyebrow">Final</div>
+  <h1>Customise Your Brand Name</h1>
+  <p class="lead">Ready to pick a name? Here's every place you need to change "VidAI" to your own name.</p>
+
+  <div class="code">
+    <div class="code-top">In frontend/index.html — search and replace "VidAI" with your name</div>
+    <pre><span class="cmt"># Places to update in index.html:</span>
+
+&lt;title&gt;<span class="var">VidAI</span> — AI Video Generator&lt;/title&gt;   <span class="cmt">← line 4</span>
+class="nav-logo"&gt; ... <span class="var">VidAI</span>              <span class="cmt">← navbar logo</span>
+© 2025 <span class="var">VidAI</span> — Personal Use            <span class="cmt">← footer</span></pre>
+  </div>
+
+  <div class="tip"><span class="ci">💡</span><div>In VS Code, press <strong>Ctrl+H</strong> to open Find & Replace. Type <code style="background:var(--bg);padding:1px 5px;border-radius:4px;font-size:12px">VidAI</code> in the first box and your new name in the second. Click Replace All.</div></div>
+
+  <h2>Want a custom domain?</h2>
+  <p>Instead of <code style="background:var(--bg3);padding:2px 6px;border-radius:4px;font-size:12px">yourusername.github.io/vidai</code> you can have <code style="background:var(--bg3);padding:2px 6px;border-radius:4px;font-size:12px">yourname.com</code>:</p>
+  <p>1. Buy a domain at <strong>namecheap.com</strong> (~$10/year for .com)<br>
+  2. In GitHub Pages settings → add your custom domain<br>
+  3. In Namecheap DNS → point it to GitHub's servers</p>
+
+  <div class="success"><span class="ci">🚀</span><div>You've built and deployed a full AI video generation website from scratch — completely free. Whenever you're ready to name it, just ask and I'll help you rebrand everything instantly!</div></div>
+
+  <div class="pnav">
+    <div class="pnav-btn" onclick="showById('test')"><div class="pnav-label">← Previous</div><div class="pnav-title">Test & go live</div></div>
+    <div class="pnav-btn right" onclick="showById('overview')"><div class="pnav-label">↩ Back to</div><div class="pnav-title">Introduction</div></div>
+  </div>
+</div>
+
+</main>
+
+<script>
+const pages = ['overview','structure','b-setup','b-render','b-env','b-ollama','r2','frontend','connect','test','customise'];
+let visited = new Set(['overview']);
+
+function show(id, btn) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  if (btn) btn.classList.add('active');
+  visited.add(id);
+  updateProg();
+  window.scrollTo(0,0);
+}
+
+function showById(id) {
+  const navBtn = [...document.querySelectorAll('.nav-item')].find(b => {
+    const attr = b.getAttribute('onclick') || '';
+    return attr.includes(`'${id}'`);
+  });
+  show(id, navBtn);
+}
+
+function updateProg() {
+  const pct = Math.round((visited.size / pages.length) * 100);
+  document.getElementById('prog').style.width = pct + '%';
+  document.getElementById('pct').textContent = pct + '%';
+}
+
+updateProg();
+</script>
+</body>
+</html>

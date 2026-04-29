@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VidAI — AI Video Generator</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #080a0f;
+    --bg2: #0f1118;
+    --bg3: #161921;
+    --bg4: #1d2030;
+    --border: rgba(255,255,255,0.06);
+    --border2: rgba(255,255,255,0.12);
+    --text: #eceef4;
+    --text2: #8890a8;
+    --text3: #464d62;
+    --accent: #5865f2;
+    --accent-light: #7c87ff;
+    --accent-bg: rgba(88,101,242,0.1);
+    --accent-border: rgba(88,101,242,0.3);
+    --green: #23d18b;
+    --green-bg: rgba(35,209,139,0.08);
+    --red: #f87171;
+    --amber: #fbbf24;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+  }
+
+  /* NAV */
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 48px;
+    height: 60px;
+    background: rgba(8,10,15,0.85);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-logo {
+    display: flex; align-items: center; gap: 10px;
+    font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 800;
+    color: var(--text); text-decoration: none; letter-spacing: -0.4px;
+  }
+  .nav-logo-icon {
+    width: 32px; height: 32px; background: var(--accent);
+    border-radius: 8px; display: flex; align-items: center; justify-content: center;
+  }
+  .nav-logo-icon svg { width: 14px; height: 14px; }
+  .nav-links { display: flex; gap: 8px; }
+  .nav-link {
+    font-size: 14px; color: var(--text2); padding: 6px 14px;
+    border-radius: 7px; text-decoration: none; transition: all 0.15s;
+  }
+  .nav-link:hover { color: var(--text); background: var(--bg3); }
+  .nav-cta {
+    background: var(--accent); color: white; font-size: 14px; font-weight: 500;
+    padding: 7px 18px; border-radius: 8px; text-decoration: none;
+    transition: opacity 0.15s;
+  }
+  .nav-cta:hover { opacity: 0.88; }
+
+  /* HERO */
+  .hero {
+    text-align: center;
+    padding: 100px 24px 80px;
+    max-width: 780px;
+    margin: 0 auto;
+  }
+  .hero-badge {
+    display: inline-flex; align-items: center; gap: 7px;
+    font-size: 12.5px; font-weight: 500;
+    background: var(--accent-bg); color: var(--accent-light);
+    border: 1px solid var(--accent-border);
+    padding: 5px 14px; border-radius: 20px;
+    margin-bottom: 28px;
+  }
+  .hero-badge-dot {
+    width: 6px; height: 6px; background: var(--accent-light);
+    border-radius: 50%; animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%,100% { opacity: 1; } 50% { opacity: 0.4; }
+  }
+  .hero h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(38px, 6vw, 62px);
+    font-weight: 800;
+    line-height: 1.1;
+    letter-spacing: -1.5px;
+    color: var(--text);
+    margin-bottom: 20px;
+  }
+  .hero h1 span {
+    background: linear-gradient(135deg, var(--accent-light), #a78bfa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .hero p {
+    font-size: 18px; color: var(--text2); line-height: 1.7;
+    margin-bottom: 40px; font-weight: 300;
+  }
+
+  /* GENERATE FORM */
+  .generate-box {
+    background: var(--bg2);
+    border: 1px solid var(--border2);
+    border-radius: 16px;
+    padding: 28px;
+    max-width: 680px;
+    margin: 0 auto 80px;
+  }
+  .generate-label {
+    font-size: 13px; color: var(--text3); letter-spacing: 0.05em;
+    text-transform: uppercase; margin-bottom: 10px; font-weight: 500;
+  }
+  .generate-input {
+    width: 100%;
+    background: var(--bg3);
+    border: 1px solid var(--border2);
+    border-radius: 10px;
+    color: var(--text);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 16px;
+    padding: 14px 18px;
+    outline: none;
+    transition: border-color 0.2s;
+    margin-bottom: 16px;
+  }
+  .generate-input:focus { border-color: var(--accent); }
+  .generate-input::placeholder { color: var(--text3); }
+  .generate-options {
+    display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px;
+    margin-bottom: 20px;
+  }
+  .option-group label {
+    display: block; font-size: 12px; color: var(--text3);
+    margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em;
+  }
+  .option-group select {
+    width: 100%; background: var(--bg3); border: 1px solid var(--border2);
+    border-radius: 8px; color: var(--text); font-family: 'DM Sans', sans-serif;
+    font-size: 13.5px; padding: 9px 12px; outline: none;
+    transition: border-color 0.2s; appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23464d62' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 10px center;
+    cursor: pointer;
+  }
+  .option-group select:focus { border-color: var(--accent); }
+  .generate-btn {
+    width: 100%; padding: 14px;
+    background: var(--accent); border: none; border-radius: 10px;
+    color: white; font-family: 'Syne', sans-serif;
+    font-size: 16px; font-weight: 700; letter-spacing: 0.2px;
+    cursor: pointer; transition: all 0.2s;
+    display: flex; align-items: center; justify-content: center; gap: 10px;
+  }
+  .generate-btn:hover { opacity: 0.88; transform: translateY(-1px); }
+  .generate-btn:active { transform: translateY(0); }
+  .generate-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+  .generate-btn svg { width: 18px; height: 18px; }
+
+  /* PROGRESS */
+  #progress-section {
+    display: none;
+    background: var(--bg2); border: 1px solid var(--border2);
+    border-radius: 16px; padding: 28px;
+    max-width: 680px; margin: 0 auto 80px;
+  }
+  #progress-section.active { display: block; }
+  .progress-title {
+    font-family: 'Syne', sans-serif; font-size: 18px; font-weight: 700;
+    margin-bottom: 20px;
+  }
+  .progress-steps { display: flex; flex-direction: column; gap: 10px; margin-bottom: 20px; }
+  .progress-step {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 14px; border-radius: 9px;
+    background: var(--bg3); border: 1px solid var(--border);
+    font-size: 14px; color: var(--text2); transition: all 0.3s;
+  }
+  .progress-step.done { border-color: rgba(35,209,139,0.2); background: rgba(35,209,139,0.05); color: var(--text); }
+  .progress-step.active { border-color: var(--accent-border); background: var(--accent-bg); color: var(--text); }
+  .step-icon {
+    width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; font-size: 12px;
+    background: var(--bg4); color: var(--text3);
+  }
+  .progress-step.done .step-icon { background: var(--green-bg); color: var(--green); }
+  .progress-step.active .step-icon { background: var(--accent-bg); color: var(--accent-light); animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .progress-bar-wrap { height: 6px; background: var(--bg4); border-radius: 6px; overflow: hidden; }
+  .progress-bar-fill {
+    height: 100%; width: 0%;
+    background: linear-gradient(90deg, var(--accent), var(--green));
+    border-radius: 6px; transition: width 0.5s ease;
+  }
+  #result-section { display: none; margin-top: 20px; }
+  #result-section.active { display: block; }
+  .result-video {
+    width: 100%; border-radius: 10px; background: #000;
+    border: 1px solid var(--border2);
+  }
+  .download-btn {
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    width: 100%; margin-top: 12px; padding: 12px;
+    background: var(--green-bg); border: 1px solid rgba(35,209,139,0.2);
+    border-radius: 10px; color: var(--green);
+    font-family: 'DM Sans', sans-serif; font-size: 15px; font-weight: 500;
+    cursor: pointer; text-decoration: none; transition: all 0.2s;
+  }
+  .download-btn:hover { background: rgba(35,209,139,0.12); }
+
+  /* FEATURES */
+  .features {
+    max-width: 1100px; margin: 0 auto; padding: 0 24px 100px;
+  }
+  .section-label {
+    text-align: center; font-size: 12px; color: var(--text3);
+    text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 14px;
+  }
+  .section-title {
+    font-family: 'Syne', sans-serif; font-size: 36px; font-weight: 800;
+    text-align: center; letter-spacing: -0.8px; margin-bottom: 48px;
+  }
+  .features-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .feature-card {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 14px; padding: 24px;
+    transition: border-color 0.2s;
+  }
+  .feature-card:hover { border-color: var(--border2); }
+  .feature-icon {
+    width: 40px; height: 40px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 20px; margin-bottom: 14px;
+  }
+  .feature-card h3 {
+    font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 700;
+    margin-bottom: 8px;
+  }
+  .feature-card p { font-size: 14px; color: var(--text2); line-height: 1.65; }
+
+  /* HOW IT WORKS */
+  .how {
+    max-width: 860px; margin: 0 auto; padding: 0 24px 100px;
+    text-align: center;
+  }
+  .steps-row { display: flex; gap: 0; margin-top: 48px; position: relative; }
+  .steps-row::before {
+    content: ''; position: absolute; top: 20px; left: 10%; right: 10%;
+    height: 1px; background: var(--border2);
+  }
+  .step-item { flex: 1; padding: 0 12px; text-align: center; }
+  .step-num {
+    width: 40px; height: 40px; border-radius: 50%;
+    background: var(--bg3); border: 1px solid var(--border2);
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Syne', sans-serif; font-size: 14px; font-weight: 700;
+    color: var(--accent-light); margin: 0 auto 16px;
+    position: relative; z-index: 1;
+  }
+  .step-item h4 { font-size: 14px; font-weight: 500; margin-bottom: 6px; }
+  .step-item p { font-size: 13px; color: var(--text2); line-height: 1.6; }
+
+  /* FOOTER */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 32px 48px;
+    display: flex; align-items: center; justify-content: space-between;
+    font-size: 13px; color: var(--text3);
+  }
+  .footer-logo {
+    font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 700;
+    color: var(--text2);
+  }
+
+  /* ERROR */
+  .error-msg {
+    display: none; background: rgba(248,113,113,0.08);
+    border: 1px solid rgba(248,113,113,0.2);
+    border-radius: 10px; padding: 14px 16px;
+    color: var(--red); font-size: 14px; margin-top: 12px;
+  }
+  .error-msg.active { display: block; }
+
+  @media (max-width: 768px) {
+    nav { padding: 0 20px; }
+    .nav-links { display: none; }
+    .generate-options { grid-template-columns: 1fr; }
+    .features-grid { grid-template-columns: 1fr; }
+    .steps-row { flex-direction: column; gap: 24px; }
+    .steps-row::before { display: none; }
+    footer { flex-direction: column; gap: 12px; text-align: center; }
+  }
+</style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="nav-logo">
+    <div class="nav-logo-icon">
+      <svg viewBox="0 0 14 14" fill="none">
+        <polygon points="2,1 13,7 2,13" fill="white"/>
+      </svg>
+    </div>
+    VidAI
+  </a>
+  <div class="nav-links">
+    <a href="#features" class="nav-link">Features</a>
+    <a href="#how" class="nav-link">How it works</a>
+  </div>
+  <a href="#generate" class="nav-cta">Generate Video</a>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-badge">
+    <div class="hero-badge-dot"></div>
+    AI-Powered · Fully Automated · Free
+  </div>
+  <h1>Turn any topic into a<br><span>professional video</span></h1>
+  <p>Type a topic. Get a complete video with AI narration,<br>matching visuals, and smooth transitions. In minutes.</p>
+</section>
+
+<!-- GENERATE BOX -->
+<div id="generate" class="generate-box">
+  <div class="generate-label">What's your video about?</div>
+  <input
+    class="generate-input"
+    id="topic-input"
+    type="text"
+    placeholder="e.g. History of cricket in India, How black holes work, Benefits of yoga..."
+    maxlength="200"
+  />
+  <div class="generate-options">
+    <div class="option-group">
+      <label>Duration</label>
+      <select id="duration">
+        <option value="60">~1 minute</option>
+        <option value="180">~3 minutes</option>
+        <option value="300">~5 minutes</option>
+        <option value="600" selected>~10 minutes</option>
+        <option value="900">~15 minutes</option>
+        <option value="1200">~20 minutes</option>
+        <option value="1800">~30 minutes</option>
+        <option value="2700">~45 minutes</option>
+        <option value="3600">~1 hour</option>
+      </select>
+    </div>
+    <div class="option-group">
+      <label>Voice</label>
+      <select id="voice">
+        <option value="en-IN-NeerjaNeural">Indian English</option>
+        <option value="en-US-JennyNeural">US English</option>
+        <option value="en-GB-SoniaNeural">British English</option>
+      </select>
+    </div>
+    <div class="option-group">
+      <label>Style</label>
+      <select id="style">
+        <option value="educational">Educational</option>
+        <option value="storytelling">Storytelling</option>
+        <option value="documentary">Documentary</option>
+        <option value="casual">Casual & Fun</option>
+      </select>
+    </div>
+  </div>
+  <button class="generate-btn" id="generate-btn" onclick="startGeneration()">
+    <svg viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="2">
+      <polygon points="5,3 15,9 5,15" fill="white" stroke="none"/>
+    </svg>
+    Generate Video
+  </button>
+  <div id="duration-warning" style="display:none;margin-top:12px;padding:11px 15px;background:rgba(251,191,36,0.08);border-left:3px solid #fbbf24;border-radius:0 8px 8px 0;font-size:13.5px;color:#8890a8;line-height:1.6;">
+    ⏱ <strong style="color:#fbbf24">Heads up:</strong> <span id="duration-warning-text"></span>
+  </div>
+  <div class="error-msg" id="error-msg"></div>
+</div>
+
+<!-- PROGRESS -->
+<div id="progress-section">
+  <div class="progress-title">Generating your video...</div>
+  <div class="progress-steps">
+    <div class="progress-step" id="step-script">
+      <div class="step-icon" id="icon-script">1</div>
+      Writing script with AI
+    </div>
+    <div class="progress-step" id="step-images">
+      <div class="step-icon" id="icon-images">2</div>
+      Fetching matching images
+    </div>
+    <div class="progress-step" id="step-voice">
+      <div class="step-icon" id="icon-voice">3</div>
+      Generating voiceover
+    </div>
+    <div class="progress-step" id="step-render">
+      <div class="step-icon" id="icon-render">4</div>
+      Rendering final video
+    </div>
+  </div>
+  <div class="progress-bar-wrap">
+    <div class="progress-bar-fill" id="progress-fill"></div>
+  </div>
+
+  <div id="result-section">
+    <video class="result-video" id="result-video" controls></video>
+    <a class="download-btn" id="download-btn" download>
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M8 2v9M4 8l4 4 4-4M2 14h12"/>
+      </svg>
+      Download Video
+    </a>
+  </div>
+</div>
+
+<!-- FEATURES -->
+<section class="features" id="features">
+  <div class="section-label">What you get</div>
+  <div class="section-title">Everything automated</div>
+  <div class="features-grid">
+    <div class="feature-card">
+      <div class="feature-icon" style="background:var(--accent-bg)">🧠</div>
+      <h3>AI Script Writing</h3>
+      <p>Local AI researches your topic and writes an engaging, structured narration script automatically.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon" style="background:rgba(251,191,36,0.1)">🖼</div>
+      <h3>Smart Image Search</h3>
+      <p>Automatically finds and downloads relevant, high-quality stock photos from Pexels that match your topic.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon" style="background:rgba(35,209,139,0.1)">🎙</div>
+      <h3>Realistic Voiceover</h3>
+      <p>Microsoft's neural voices narrate your script naturally. Choose from 300+ voices including Indian English.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon" style="background:rgba(167,139,250,0.1)">🎬</div>
+      <h3>Smooth Transitions</h3>
+      <p>Images are combined with fade transitions, timed perfectly to the narration audio.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon" style="background:rgba(248,113,113,0.1)">⚡</div>
+      <h3>Fast Rendering</h3>
+      <p>Short videos ready in minutes. Longer videos (30–60 min) may take 20–40 min to render. Download as MP4 and share anywhere.</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon" style="background:rgba(35,209,139,0.1)">🆓</div>
+      <h3>100% Free</h3>
+      <p>No subscriptions, no credits, no hidden costs. Built on free tools and open-source software.</p>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="how" id="how">
+  <div class="section-label">The process</div>
+  <div class="section-title">How it works</div>
+  <div class="steps-row">
+    <div class="step-item">
+      <div class="step-num">1</div>
+      <h4>Type your topic</h4>
+      <p>Enter any topic you want a video about</p>
+    </div>
+    <div class="step-item">
+      <div class="step-num">2</div>
+      <h4>AI writes script</h4>
+      <p>Local AI researches and writes a narration</p>
+    </div>
+    <div class="step-item">
+      <div class="step-num">3</div>
+      <h4>Images & voice</h4>
+      <p>Photos fetched, voiceover generated</p>
+    </div>
+    <div class="step-item">
+      <div class="step-num">4</div>
+      <h4>Video rendered</h4>
+      <p>Everything combined into a final MP4</p>
+    </div>
+    <div class="step-item">
+      <div class="step-num">5</div>
+      <h4>Download & share</h4>
+      <p>Your video is ready to use anywhere</p>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="footer-logo">VidAI</div>
+  <div>Built with Python, MoviePy, Edge TTS & Pexels API</div>
+  <div>© 2025 VidAI — Personal Use</div>
+</footer>
+
+<script>
+  // IMPORTANT: Change this to your Render.com backend URL after deploying
+  const BACKEND_URL = 'https://your-vidai-backend.onrender.com';
+
+  // Show render time warning based on selected duration
+  document.getElementById('duration').addEventListener('change', function() {
+    const secs = parseInt(this.value);
+    const warn = document.getElementById('duration-warning');
+    const txt = document.getElementById('duration-warning-text');
+    if (secs >= 1800) {
+      const renderMins = Math.round(secs / 60 * 0.6);
+      txt.textContent = `A ${Math.round(secs/60)}-minute video takes roughly ${renderMins}–${renderMins+10} minutes to render on the server. Keep this tab open until it's done.`;
+      warn.style.display = 'block';
+    } else if (secs >= 600) {
+      const renderMins = Math.round(secs / 60 * 0.5);
+      txt.textContent = `A ${Math.round(secs/60)}-minute video takes roughly ${renderMins}–${renderMins+5} minutes to render.`;
+      warn.style.display = 'block';
+    } else {
+      warn.style.display = 'none';
+    }
+  });
+
+  async function startGeneration() {
+    const topic = document.getElementById('topic-input').value.trim();
+    if (!topic) {
+      showError('Please enter a topic for your video.');
+      return;
+    }
+
+    const duration = document.getElementById('duration').value;
+    const voice = document.getElementById('voice').value;
+    const style = document.getElementById('style').value;
+
+    // Hide error, show progress
+    hideError();
+    document.getElementById('generate-btn').disabled = true;
+    document.getElementById('progress-section').classList.add('active');
+    document.getElementById('result-section').classList.remove('active');
+    window.scrollTo({ top: document.getElementById('progress-section').offsetTop - 80, behavior: 'smooth' });
+
+    setProgress(0);
+    setStep('script', 'active');
+
+    try {
+      const response = await fetch(`${BACKEND_URL}/api/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ topic, duration: parseInt(duration), voice, style })
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || 'Server error. Try again.');
+      }
+
+      const data = await response.json();
+      const jobId = data.job_id;
+
+      // Poll for progress
+      pollProgress(jobId);
+
+    } catch (err) {
+      showError(err.message);
+      resetUI();
+    }
+  }
+
+  async function pollProgress(jobId) {
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(`${BACKEND_URL}/api/status/${jobId}`);
+        const data = await res.json();
+
+        updateProgressUI(data);
+
+        if (data.status === 'done') {
+          clearInterval(interval);
+          showResult(data.video_url);
+        } else if (data.status === 'error') {
+          clearInterval(interval);
+          showError(data.error || 'Something went wrong during generation.');
+          resetUI();
+        }
+      } catch (e) {
+        clearInterval(interval);
+        showError('Lost connection to server. Please try again.');
+        resetUI();
+      }
+    }, 2000);
+  }
+
+  function updateProgressUI(data) {
+    const stepMap = {
+      'writing_script': { step: 'script', pct: 20 },
+      'fetching_images': { step: 'images', pct: 45 },
+      'generating_voice': { step: 'voice', pct: 65 },
+      'rendering': { step: 'render', pct: 85 },
+      'done': { step: null, pct: 100 }
+    };
+    const steps = ['script', 'images', 'voice', 'render'];
+    const current = stepMap[data.step] || { step: null, pct: 0 };
+
+    setProgress(current.pct);
+
+    const currentIdx = steps.indexOf(current.step);
+    steps.forEach((s, i) => {
+      if (i < currentIdx) setStep(s, 'done');
+      else if (i === currentIdx) setStep(s, 'active');
+    });
+  }
+
+  function showResult(videoUrl) {
+    setProgress(100);
+    ['script','images','voice','render'].forEach(s => setStep(s, 'done'));
+    const video = document.getElementById('result-video');
+    video.src = videoUrl;
+    const dl = document.getElementById('download-btn');
+    dl.href = videoUrl;
+    document.getElementById('result-section').classList.add('active');
+    document.getElementById('generate-btn').disabled = false;
+  }
+
+  function setStep(name, state) {
+    const el = document.getElementById(`step-${name}`);
+    const icon = document.getElementById(`icon-${name}`);
+    el.className = `progress-step ${state}`;
+    if (state === 'done') icon.innerHTML = '✓';
+    else if (state === 'active') icon.innerHTML = '↻';
+  }
+
+  function setProgress(pct) {
+    document.getElementById('progress-fill').style.width = pct + '%';
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('error-msg');
+    el.textContent = msg;
+    el.classList.add('active');
+  }
+
+  function hideError() {
+    document.getElementById('error-msg').classList.remove('active');
+  }
+
+  function resetUI() {
+    document.getElementById('generate-btn').disabled = false;
+  }
+</script>
+</body>
+</html>
