@@ -123,8 +123,15 @@ def run_pipeline(job_id, topic, duration, voice, style):
 
             # STEP 2: Fetch images
             update_job(job_id, step="fetching_images")
-            # Scale image count with duration: ~1 image per 10 seconds, min 6, max 80
-            image_count = max(6, min(80, duration // 10))
+            # Scale media count with duration
+            media_count = max(6, min(40, duration // 10))
+
+            # Try to get video clips first (more engaging)
+            video_clips = fetch_pexels_videos(topic, count=max(3, media_count//3), tmpdir=tmpdir)
+            logger.info(f"[{job_id}] Fetched {len(video_clips)} video clips")
+
+            # Get images to fill the rest
+            image_count = max(6, media_count - len(video_clips))
             image_paths = fetch_images(topic, count=image_count, tmpdir=tmpdir)
             logger.info(f"[{job_id}] Fetched {len(image_paths)} images")
 
@@ -137,7 +144,7 @@ def run_pipeline(job_id, topic, duration, voice, style):
             # STEP 4: Render video
             update_job(job_id, step="rendering")
             output_path = os.path.join(tmpdir, f"{job_id}.mp4")
-            render_video(image_paths, audio_path, output_path, script=script)
+            render_video(image_paths, audio_path, output_path, script=script, video_clips=video_clips)
             logger.info(f"[{job_id}] Video rendered")
 
             # STEP 5: Upload to R2
@@ -207,11 +214,39 @@ Write the narration now:"""
 
 # ─── IMAGES ─────────────────────────────────────────────────────────────────
 
+def fetch_pexels_videos(topic, count, tmpdir):
+    """Fetch short video clips from Pexels."""
+    headers = {"Authorization": PEXELS_API_KEY}
+    url = f"https://api.pexels.com/videos/search?query={topic}&per_page={min(count,15)}&orientation=landscape"
+    clips = []
+    try:
+        res = requests.get(url, headers=headers, timeout=10).json()
+        videos = res.get("videos", [])
+        for i, video in enumerate(videos[:count]):
+            # Get smallest SD file
+            files = sorted(video.get("video_files", []), key=lambda x: x.get("width", 9999))
+            sd_files = [f for f in files if f.get("width", 0) <= 1280 and f.get("link")]
+            if not sd_files:
+                continue
+            vid_url = sd_files[0]["link"]
+            path = os.path.join(tmpdir, f"clip_{i}.mp4")
+            try:
+                vid_data = requests.get(vid_url, timeout=30).content
+                with open(path, "wb") as f:
+                    f.write(vid_data)
+                clips.append(path)
+                logger.info(f"Downloaded video clip {i}")
+            except Exception as e:
+                logger.warning(f"Failed to download video {i}: {e}")
+    except Exception as e:
+        logger.warning(f"Pexels video search failed: {e}")
+    return clips
+
+
 def fetch_images(topic, count, tmpdir):
     headers = {"Authorization": PEXELS_API_KEY}
     photos = []
 
-    # Pexels max per_page is 80 — paginate if we need more
     per_page = min(count, 80)
     pages_needed = (count + per_page - 1) // per_page
 
@@ -227,7 +262,6 @@ def fetch_images(topic, count, tmpdir):
         if len(photos) >= count:
             break
 
-    # If we still don't have enough, loop existing photos to fill
     paths = []
     downloaded = []
     for i, photo in enumerate(photos[:count]):
@@ -246,18 +280,16 @@ def fetch_images(topic, count, tmpdir):
         except Exception as e:
             logger.warning(f"Failed to download image {i}: {e}")
 
-    # If we need more images than Pexels returned, loop what we have
     if downloaded and len(paths) < count:
         while len(paths) < count:
             paths.append(downloaded[len(paths) % len(downloaded)])
 
-    # Fallback: generate solid-color placeholder images if none downloaded
     if not paths:
         colors = [(30,35,60),(20,50,80),(40,20,60),(20,60,40),(60,30,20),(50,50,20)]
         for i in range(count):
             color = colors[i % len(colors)]
             path = os.path.join(tmpdir, f"placeholder_{i}.jpg")
-            img = Image.new("RGB", (1920, 1080), color)
+            img = Image.new("RGB", (854, 480), color)
             img.save(path, "JPEG")
             paths.append(path)
 
@@ -340,27 +372,32 @@ def make_subtitle_clip(text, duration, W=854, H=480):
         return None
 
 
-def render_video(image_paths, audio_path, output_path, script=None):
+def render_video(image_paths, audio_path, output_path, script=None, video_clips=None):
     from moviepy.editor import CompositeVideoClip, AudioFileClip as AFC
     import numpy as np
 
     audio = AudioFileClip(audio_path)
     total_duration = audio.duration
-    clip_duration = total_duration / len(image_paths)
+
+    # Each image shows for 5 seconds, loop images to fill full audio duration
+    secs_per_image = 5
+    total_slots = max(len(image_paths), int(total_duration / secs_per_image) + 1)
+    looped_paths = [image_paths[i % len(image_paths)] for i in range(total_slots)]
+    clip_duration = total_duration / total_slots
 
     # Split script into chunks for subtitles
     subtitle_chunks = []
     if script:
         words = script.split()
-        words_per_clip = max(1, len(words) // len(image_paths))
-        for i in range(len(image_paths)):
+        words_per_clip = max(1, len(words) // total_slots)
+        for i in range(total_slots):
             chunk = words[i * words_per_clip:(i + 1) * words_per_clip]
             subtitle_chunks.append(" ".join(chunk))
 
     clips = []
     effects = ["in", "pan", "in", "pan", "in", "pan"]
 
-    for i, path in enumerate(image_paths):
+    for i, path in enumerate(looped_paths):
         effect = effects[i % len(effects)]
         try:
             base = make_zoom_clip(path, clip_duration, effect)
