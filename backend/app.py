@@ -15,9 +15,12 @@ from moviepy.editor import (
     ImageClip, AudioFileClip, concatenate_videoclips, CompositeVideoClip
 )
 from PIL import Image
+
+# Fix for newer Pillow versions - patch ANTIALIAS
 from PIL import Image as PILImage
 if not hasattr(PILImage, 'ANTIALIAS'):
     PILImage.ANTIALIAS = PILImage.LANCZOS
+
 import boto3  # For Cloudflare R2 storage
 import tempfile
 import logging
@@ -240,7 +243,7 @@ def fetch_images(topic, count, tmpdir):
         for i in range(count):
             color = colors[i % len(colors)]
             path = os.path.join(tmpdir, f"placeholder_{i}.jpg")
-            img = Image.new("RGB", (854, 480), color)
+            img = Image.new("RGB", (1920, 1080), color)
             img.save(path, "JPEG")
             paths.append(path)
 
@@ -284,7 +287,7 @@ def render_video(image_paths, audio_path, output_path):
     video = concatenate_videoclips(clips, method="compose")
     video = video.set_audio(audio)
 
-   video.write_videofile(
+    video.write_videofile(
         output_path,
         fps=24,
         codec="libx264",
