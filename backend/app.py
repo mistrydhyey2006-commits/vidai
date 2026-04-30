@@ -312,22 +312,29 @@ def upload_to_r2(file_path, job_id):
         logger.warning("B2 not configured — returning placeholder")
         return f"/static/videos/{job_id}.mp4"
 
-    s3 = boto3.client(
-        "s3",
-        endpoint_url=R2_ENDPOINT,
-        aws_access_key_id=R2_ACCESS_KEY,
-        aws_secret_access_key=R2_SECRET_KEY,
-    )
+    try:
+        s3 = boto3.client(
+            "s3",
+            endpoint_url=R2_ENDPOINT,
+            aws_access_key_id=R2_ACCESS_KEY,
+            aws_secret_access_key=R2_SECRET_KEY,
+            region_name="us-east-005",
+        )
 
-    key = f"videos/{job_id}.mp4"
-    s3.upload_file(
-        file_path,
-        R2_BUCKET,
-        key,
-        ExtraArgs={"ContentType": "video/mp4", "ACL": "public-read"},
-    )
+        key = f"videos/{job_id}.mp4"
+        with open(file_path, "rb") as f:
+            s3.put_object(
+                Bucket=R2_BUCKET,
+                Key=key,
+                Body=f,
+                ContentType="video/mp4",
+            )
 
-    return f"{R2_PUBLIC_URL}/file/{R2_BUCKET}/{key}"
+        # Return download URL format for private Backblaze bucket
+        return f"{R2_ENDPOINT}/{R2_BUCKET}/{key}"
+    except Exception as e:
+        logger.error(f"Upload failed: {e}")
+        raise
 
 
 # ─── ENTRY ──────────────────────────────────────────────────────────────────
