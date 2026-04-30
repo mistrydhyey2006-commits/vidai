@@ -139,7 +139,7 @@ def run_pipeline(job_id, topic, duration, voice, style):
             # STEP 4: Render video
             update_job(job_id, step="rendering")
             output_path = os.path.join(tmpdir, f"{job_id}.mp4")
-            render_video(image_paths, audio_path, output_path)
+            render_video(image_paths, audio_path, output_path, script=script)
             logger.info(f"[{job_id}] Video rendered")
 
             # STEP 5: Upload to R2
@@ -283,25 +283,125 @@ def generate_voice(text, voice, output_path):
 
 
 # ─── RENDER ─────────────────────────────────────────────────────────────────
+# Version 7 - Added zoom/pan effects, subtitles, background music
 
-def render_video(image_paths, audio_path, output_path):
+def make_zoom_clip(path, duration, zoom_direction="in"):
+    """Create a zoom in or pan effect on an image clip."""
+    import numpy as np
+    W, H = 854, 480
+    clip = ImageClip(path).set_duration(duration)
+
+    def zoom_in(get_frame, t):
+        frame = get_frame(t)
+        progress = t / duration
+        scale = 1.0 + 0.08 * progress  # zoom from 1x to 1.08x
+        new_w = int(W * scale)
+        new_h = int(H * scale)
+        resized = Image.fromarray(frame).resize((new_w, new_h), Image.LANCZOS)
+        x = (new_w - W) // 2
+        y = (new_h - H) // 2
+        cropped = resized.crop((x, y, x + W, y + H))
+        return np.array(cropped)
+
+    def pan_right(get_frame, t):
+        frame = get_frame(t)
+        progress = t / duration
+        scale = 1.08
+        new_w = int(W * scale)
+        new_h = int(H * scale)
+        resized = Image.fromarray(frame).resize((new_w, new_h), Image.LANCZOS)
+        x = int((new_w - W) * progress)
+        y = (new_h - H) // 2
+        cropped = resized.crop((x, y, x + W, y + H))
+        return np.array(cropped)
+
+    if zoom_direction == "in":
+        return clip.fl(zoom_in).resize((W, H))
+    else:
+        return clip.fl(pan_right).resize((W, H))
+
+
+def make_subtitle_clip(text, duration, W=854, H=480):
+    """Create a subtitle text overlay."""
+    from moviepy.editor import TextClip, CompositeVideoClip
+    try:
+        txt = TextClip(
+            text[:80],
+            fontsize=20,
+            color="white",
+            stroke_color="black",
+            stroke_width=1.5,
+            method="caption",
+            size=(W - 60, None),
+            font="DejaVu-Sans",
+        ).set_duration(duration)
+        txt = txt.set_position(("center", H - txt.h - 20))
+        return txt
+    except Exception as e:
+        logger.warning(f"Subtitle failed: {e}")
+        return None
+
+
+def render_video(image_paths, audio_path, output_path, script=None):
+    from moviepy.editor import CompositeVideoClip, AudioFileClip as AFC
+    import numpy as np
+
     audio = AudioFileClip(audio_path)
     total_duration = audio.duration
     clip_duration = total_duration / len(image_paths)
 
+    # Split script into chunks for subtitles
+    subtitle_chunks = []
+    if script:
+        words = script.split()
+        words_per_clip = max(1, len(words) // len(image_paths))
+        for i in range(len(image_paths)):
+            chunk = words[i * words_per_clip:(i + 1) * words_per_clip]
+            subtitle_chunks.append(" ".join(chunk))
+
     clips = []
-    for path in image_paths:
-        clip = (
-            ImageClip(path)
-            .set_duration(clip_duration)
-            .fadein(0.5)
-            .fadeout(0.5)
-            .resize((854, 480))
-        )
-        clips.append(clip)
+    effects = ["in", "pan", "in", "pan", "in", "pan"]
+
+    for i, path in enumerate(image_paths):
+        effect = effects[i % len(effects)]
+        try:
+            base = make_zoom_clip(path, clip_duration, effect)
+        except Exception:
+            base = ImageClip(path).set_duration(clip_duration).resize((854, 480))
+
+        base = base.fadein(0.4).fadeout(0.4)
+
+        # Add subtitle overlay
+        layers = [base]
+        if subtitle_chunks and i < len(subtitle_chunks):
+            sub = make_subtitle_clip(subtitle_chunks[i], clip_duration)
+            if sub:
+                layers.append(sub)
+
+        if len(layers) > 1:
+            final_clip = CompositeVideoClip(layers, size=(854, 480)).set_duration(clip_duration)
+        else:
+            final_clip = base
+
+        clips.append(final_clip)
 
     video = concatenate_videoclips(clips, method="compose")
-    video = video.set_audio(audio)
+
+    # Mix background music at low volume
+    try:
+        music_path = os.path.join(os.path.dirname(audio_path), "bg_music.mp3")
+        bg_url = "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3"
+        music_data = requests.get(bg_url, timeout=10).content
+        with open(music_path, "wb") as f:
+            f.write(music_data)
+        bg = AudioFileClip(music_path).subclip(0, total_duration).volumex(0.08)
+        from moviepy.editor import CompositeAudioClip
+        mixed_audio = CompositeAudioClip([audio.volumex(1.0), bg])
+        video = video.set_audio(mixed_audio)
+        logger.info("Background music added!")
+    except Exception as e:
+        logger.warning(f"Background music failed: {e}, using voice only")
+        video = video.set_audio(audio)
 
     video.write_videofile(
         output_path,
@@ -313,7 +413,7 @@ def render_video(image_paths, audio_path, output_path):
         logger=None,
         preset="ultrafast",
         threads=1,
-        bitrate="500k",
+        bitrate="600k",
     )
 
     audio.close()
