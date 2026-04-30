@@ -582,12 +582,10 @@
           showError(data.error || 'Something went wrong during generation.');
           resetUI();
         }
-      } catch (e) {
-        clearInterval(interval);
-        showError('Lost connection to server. Please try again.');
-        resetUI();
+   } catch (e) {
+        console.log('Polling error, retrying...', e);
       }
-    }, 2000);
+    }, 5000);
   }
 
   function updateProgressUI(data) {
