@@ -95,6 +95,22 @@ def status(job_id):
     return jsonify(job)
 
 
+@app.route("/api/video/<job_id>", methods=["GET"])
+def serve_video(job_id):
+    from flask import Response
+    video_data = video_store.get(job_id)
+    if not video_data:
+        return jsonify({"error": "Video not found"}), 404
+    return Response(
+        video_data,
+        mimetype="video/mp4",
+        headers={
+            "Content-Disposition": f"attachment; filename=vidai_{job_id[:8]}.mp4",
+            "Access-Control-Allow-Origin": "*",
+        }
+    )
+
+
 # ─── PIPELINE ───────────────────────────────────────────────────────────────
 
 def run_pipeline(job_id, topic, duration, voice, style):
@@ -306,35 +322,17 @@ def render_video(image_paths, audio_path, output_path):
 
 # ─── UPLOAD ─────────────────────────────────────────────────────────────────
 
+# Store videos in memory for serving
+video_store = {}
+
 def upload_to_r2(file_path, job_id):
-    """Upload to Backblaze B2 (S3-compatible) and return public URL."""
-    if not R2_ENDPOINT or not R2_ACCESS_KEY:
-        logger.warning("B2 not configured — returning placeholder")
-        return f"/static/videos/{job_id}.mp4"
-
-    try:
-        s3 = boto3.client(
-            "s3",
-            endpoint_url=R2_ENDPOINT,
-            aws_access_key_id=R2_ACCESS_KEY,
-            aws_secret_access_key=R2_SECRET_KEY,
-            region_name="us-east-005",
-        )
-
-        key = f"videos/{job_id}.mp4"
-        with open(file_path, "rb") as f:
-            s3.put_object(
-                Bucket=R2_BUCKET,
-                Key=key,
-                Body=f,
-                ContentType="video/mp4",
-            )
-
-        # Return download URL format for private Backblaze bucket
-        return f"{R2_ENDPOINT}/{R2_BUCKET}/{key}"
-    except Exception as e:
-        logger.error(f"Upload failed: {e}")
-        raise
+    """Store video in memory and return backend URL."""
+    with open(file_path, "rb") as f:
+        video_store[job_id] = f.read()
+    logger.info(f"Video stored in memory: {job_id} ({len(video_store[job_id])} bytes)")
+    # Return URL pointing to our own backend
+    backend_url = os.environ.get("BACKEND_URL", "https://vidai.onrender.com")
+    return f"{backend_url}/api/video/{job_id}"
 
 
 # ─── ENTRY ──────────────────────────────────────────────────────────────────
