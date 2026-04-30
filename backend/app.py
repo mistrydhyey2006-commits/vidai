@@ -222,7 +222,7 @@ def fetch_images(topic, count, tmpdir):
                 f.write(img_data)
             with Image.open(path) as img:
                 img = img.convert("RGB")
-                img = img.resize((1920, 1080), Image.LANCZOS)
+                img = img.resize((854, 480), Image.LANCZOS)
                 img.save(path, "JPEG", quality=90)
             paths.append(path)
             downloaded.append(path)
@@ -240,7 +240,7 @@ def fetch_images(topic, count, tmpdir):
         for i in range(count):
             color = colors[i % len(colors)]
             path = os.path.join(tmpdir, f"placeholder_{i}.jpg")
-            img = Image.new("RGB", (1920, 1080), color)
+            img = Image.new("RGB", (854, 480), color)
             img.save(path, "JPEG")
             paths.append(path)
 
@@ -277,22 +277,24 @@ def render_video(image_paths, audio_path, output_path):
             .set_duration(clip_duration)
             .fadein(0.5)
             .fadeout(0.5)
-            .resize((1920, 1080))
+            .resize((854, 480))
         )
         clips.append(clip)
 
     video = concatenate_videoclips(clips, method="compose")
     video = video.set_audio(audio)
 
-    video.write_videofile(
+   video.write_videofile(
         output_path,
         fps=24,
         codec="libx264",
         audio_codec="aac",
         temp_audiofile=output_path.replace(".mp4", "_temp_audio.m4a"),
         remove_temp=True,
-        logger=None,  # Suppress moviepy output
-        preset="fast",
+        logger=None,
+        preset="ultrafast",
+        threads=1,
+        bitrate="500k",
     )
 
     audio.close()
