@@ -97,17 +97,15 @@ def status(job_id):
 
 @app.route("/api/video/<job_id>", methods=["GET"])
 def serve_video(job_id):
-    from flask import Response
-    video_data = video_store.get(job_id)
-    if not video_data:
+    from flask import send_file
+    video_path = os.path.join(VIDEO_DIR, f"{job_id}.mp4")
+    if not os.path.exists(video_path):
         return jsonify({"error": "Video not found"}), 404
-    return Response(
-        video_data,
+    return send_file(
+        video_path,
         mimetype="video/mp4",
-        headers={
-            "Content-Disposition": f"attachment; filename=vidai_{job_id[:8]}.mp4",
-            "Access-Control-Allow-Origin": "*",
-        }
+        as_attachment=False,
+        download_name=f"vidai_{job_id[:8]}.mp4",
     )
 
 
@@ -422,15 +420,16 @@ def render_video(image_paths, audio_path, output_path, script=None):
 
 # ─── UPLOAD ─────────────────────────────────────────────────────────────────
 
-# Store videos in memory for serving
-video_store = {}
+# Store videos on disk for serving
+VIDEO_DIR = "/tmp/vidai_videos"
+os.makedirs(VIDEO_DIR, exist_ok=True)
 
 def upload_to_r2(file_path, job_id):
-    """Store video in memory and return backend URL."""
-    with open(file_path, "rb") as f:
-        video_store[job_id] = f.read()
-    logger.info(f"Video stored in memory: {job_id} ({len(video_store[job_id])} bytes)")
-    # Return URL pointing to our own backend
+    """Copy video to persistent disk location and return backend URL."""
+    dest = os.path.join(VIDEO_DIR, f"{job_id}.mp4")
+    import shutil
+    shutil.copy2(file_path, dest)
+    logger.info(f"Video saved to disk: {dest} ({os.path.getsize(dest)} bytes)")
     backend_url = os.environ.get("BACKEND_URL", "https://vidai.onrender.com")
     return f"{backend_url}/api/video/{job_id}"
 
