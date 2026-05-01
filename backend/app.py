@@ -1,11 +1,11 @@
 """
-VidAI Backend v10 — Flask server for AI video generation
-Fixes:
-  1. Script too short → forced word count with re-prompt fallback
-  2. Video clips ignored → properly interleaved with images
-  3. VideoFileClip opened twice bug → fixed
-  4. subtitle sync improved
-Deploy on Render.com (free tier)
+VidAI Backend v11
+Fixes over v10:
+  1. Video duration now driven by actual audio length (not slot count)
+  2. Pexels search uses enriched topic keywords for relevant visuals
+  3. Zoom reduced from 1.08 → 1.04 to eliminate blur on low-res images
+  4. Subtitle stroke_width increased to 2.5 + font size 24 for readability
+  5. Image resolution fetched at "large2" (1880px) instead of "large" (940px)
 """
 
 from flask import Flask, request, jsonify
@@ -26,7 +26,6 @@ import numpy as np
 import tempfile
 import logging
 
-# Fix for newer Pillow versions
 if not hasattr(PILImage, 'ANTIALIAS'):
     PILImage.ANTIALIAS = PILImage.LANCZOS
 
@@ -36,22 +35,24 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 CORS(app)
 
-# ─── CONFIG ──────────────────────────────────────────────────────────────────
-PEXELS_API_KEY  = os.environ.get("PEXELS_API_KEY", "")
-GROQ_API_KEY    = os.environ.get("GROQ_API_KEY", "")
-BACKEND_URL     = os.environ.get("BACKEND_URL", "https://vidai.onrender.com")
+PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY", "")
+GROQ_API_KEY   = os.environ.get("GROQ_API_KEY", "")
+BACKEND_URL    = os.environ.get("BACKEND_URL", "https://vidai.onrender.com")
 
 VIDEO_DIR = "/tmp/vidai_videos"
 os.makedirs(VIDEO_DIR, exist_ok=True)
 
-# In-memory job store
 jobs = {}
+
+W, H = 854, 480
+SECS_PER_SLOT = 5
+
 
 # ─── ROUTES ──────────────────────────────────────────────────────────────────
 
 @app.route("/", methods=["GET"])
 def health():
-    return jsonify({"status": "VidAI v10 running"})
+    return jsonify({"status": "VidAI v11 running"})
 
 
 @app.route("/api/generate", methods=["POST"])
@@ -71,11 +72,8 @@ def generate():
 
     job_id = str(uuid.uuid4())
     jobs[job_id] = {
-        "status":    "queued",
-        "step":      "queued",
-        "topic":     topic,
-        "video_url": None,
-        "error":     None,
+        "status": "queued", "step": "queued",
+        "topic": topic, "video_url": None, "error": None,
     }
 
     thread = threading.Thread(
@@ -84,7 +82,6 @@ def generate():
         daemon=True,
     )
     thread.start()
-
     return jsonify({"job_id": job_id})
 
 
@@ -103,10 +100,8 @@ def serve_video(job_id):
     if not os.path.exists(video_path):
         return jsonify({"error": "Video not found"}), 404
     return send_file(
-        video_path,
-        mimetype="video/mp4",
-        as_attachment=False,
-        download_name=f"vidai_{job_id[:8]}.mp4",
+        video_path, mimetype="video/mp4",
+        as_attachment=False, download_name=f"vidai_{job_id[:8]}.mp4",
     )
 
 
@@ -116,16 +111,14 @@ def run_pipeline(job_id, topic, duration, voice, style):
     try:
         with tempfile.TemporaryDirectory() as tmpdir:
 
-            # STEP 1: Script
             update_job(job_id, "writing_script")
             script = write_script(topic, duration, style)
             logger.info(f"[{job_id}] Script: {len(script.split())} words")
 
-            # STEP 2: Media — decide counts based on duration
             update_job(job_id, "fetching_media")
-            total_slots   = max(8, duration // 5)          # one slot per 5 s
-            video_want    = max(3, total_slots // 3)       # ~1/3 video clips
-            image_want    = total_slots - video_want       # rest are images
+            total_slots = max(8, duration // 5)
+            video_want  = max(3, total_slots // 3)
+            image_want  = total_slots - video_want
 
             video_clips = fetch_pexels_videos(topic, count=video_want, tmpdir=tmpdir)
             logger.info(f"[{job_id}] Got {len(video_clips)} video clips")
@@ -133,13 +126,11 @@ def run_pipeline(job_id, topic, duration, voice, style):
             image_paths = fetch_images(topic, count=max(6, image_want), tmpdir=tmpdir)
             logger.info(f"[{job_id}] Got {len(image_paths)} images")
 
-            # STEP 3: Voiceover
             update_job(job_id, "generating_voice")
             audio_path = os.path.join(tmpdir, "narration.mp3")
             generate_voice(script, voice, audio_path)
             logger.info(f"[{job_id}] Voice generated")
 
-            # STEP 4: Render
             update_job(job_id, "rendering")
             output_path = os.path.join(tmpdir, f"{job_id}.mp4")
             render_video(
@@ -151,16 +142,12 @@ def run_pipeline(job_id, topic, duration, voice, style):
             )
             logger.info(f"[{job_id}] Render done")
 
-            # STEP 5: Move to persistent location
             dest = os.path.join(VIDEO_DIR, f"{job_id}.mp4")
             shutil.copy2(output_path, dest)
             video_url = f"{BACKEND_URL}/api/video/{job_id}"
-            logger.info(f"[{job_id}] Saved → {dest}")
 
             jobs[job_id].update({
-                "status":    "done",
-                "step":      "done",
-                "video_url": video_url,
+                "status": "done", "step": "done", "video_url": video_url,
             })
 
     except Exception as e:
@@ -176,16 +163,11 @@ def update_job(job_id, step):
 # ─── SCRIPT ──────────────────────────────────────────────────────────────────
 
 def write_script(topic, duration, style):
-    """
-    BUG FIX 1: Groq was returning short scripts.
-    Fix: hard word-count target + re-prompt if too short.
-    """
-    # 2.5 words/sec is a safe narration pace with gTTS
     target_words = int(duration * 2.5)
-    min_words    = int(target_words * 0.85)   # accept if within 15% short
+    min_words    = int(target_words * 0.85)
 
     style_prompts = {
-        "educational": "informative and clear, like a teacher explaining to students",
+        "educational":  "informative and clear, like a teacher explaining to students",
         "storytelling": "narrative and engaging, like telling a fascinating story",
         "documentary":  "serious and authoritative, like a BBC documentary narrator",
         "casual":       "friendly and conversational, like explaining to a friend",
@@ -224,24 +206,21 @@ Begin the narration now:"""
         actual = len(script.split())
         logger.info(f"Script attempt 1: {actual} words (target {target_words})")
 
-        # Re-prompt if too short
         if actual < min_words:
-            shortage = target_words - actual
-            extra    = f"IMPORTANT: Your previous attempt was too short by {shortage} words. Write more detail, more examples, and expand every section."
+            shortage  = target_words - actual
+            extra     = f"IMPORTANT: Your previous attempt was too short by {shortage} words. Write more detail, more examples, and expand every section."
             extension = call_groq(build_prompt(shortage + 50, extra))
-            script = script + " " + extension
-            actual = len(script.split())
-            logger.info(f"Script after extension: {actual} words")
+            script    = script + " " + extension
+            logger.info(f"Script after extension: {len(script.split())} words")
 
         return script
 
     except Exception as e:
         logger.warning(f"Groq failed ({e}), using fallback script")
-        # Fallback: repeat sentences to fill duration
         base = (
             f"Welcome to this exploration of {topic}. "
             f"{topic} is one of the most fascinating subjects you can study. "
-            f"Let's dive deep into everything there is to know about {topic}. "
+            f"Let us dive deep into everything there is to know about {topic}. "
             f"From its origins to its modern significance, {topic} continues to shape our world. "
             f"Experts have long studied {topic} and uncovered remarkable insights. "
             f"As we continue, you will discover why {topic} matters so much today. "
@@ -249,37 +228,80 @@ Begin the narration now:"""
             f"Understanding {topic} opens up a whole new way of seeing things around us. "
             f"Thank you for joining this journey through the world of {topic}."
         )
-        # Repeat to approximate duration
         words_per_repeat = len(base.split())
         repeats = max(1, target_words // words_per_repeat + 1)
-        return " ".join([base] * repeats)[:target_words * 6]  # rough char limit
+        return " ".join([base] * repeats)
 
 
-# ─── IMAGES ──────────────────────────────────────────────────────────────────
+# ─── SEARCH QUERY ENRICHMENT ─────────────────────────────────────────────────
+
+def enrich_query(topic):
+    """
+    FIX 2: Raw topic titles give bad Pexels results.
+    Ask Groq for 3 specific visual search terms related to the topic.
+    Falls back to simple keyword extraction if Groq fails.
+    """
+    try:
+        client = Groq(api_key=GROQ_API_KEY)
+        response = client.chat.completions.create(
+            model="llama3-8b-8192",
+            messages=[{
+                "role": "user",
+                "content": (
+                    f'Give me 3 short Pexels image search queries (2-4 words each) '
+                    f'for a video about: "{topic}". '
+                    f'Return ONLY a comma-separated list, nothing else. '
+                    f'Example format: space galaxy stars, black hole NASA, cosmic nebula'
+                )
+            }],
+            max_tokens=60,
+        )
+        raw = response.choices[0].message.content.strip()
+        queries = [q.strip() for q in raw.split(",") if q.strip()]
+        if queries:
+            logger.info(f"Enriched queries: {queries}")
+            return queries
+    except Exception as e:
+        logger.warning(f"Query enrichment failed: {e}")
+
+    # Fallback: use topic as-is
+    return [topic]
+
+
+# ─── MEDIA FETCH ─────────────────────────────────────────────────────────────
 
 def fetch_pexels_videos(topic, count, tmpdir):
     if not PEXELS_API_KEY:
         return []
+
+    queries = enrich_query(topic)
     headers = {"Authorization": PEXELS_API_KEY}
-    url = f"https://api.pexels.com/videos/search?query={topic}&per_page={min(count, 15)}&orientation=landscape"
-    clips = []
-    try:
-        res = requests.get(url, headers=headers, timeout=10).json()
-        for i, video in enumerate(res.get("videos", [])[:count]):
-            files = sorted(video.get("video_files", []), key=lambda x: x.get("width", 9999))
-            sd    = [f for f in files if 0 < f.get("width", 0) <= 1280 and f.get("link")]
-            if not sd:
-                continue
-            path = os.path.join(tmpdir, f"clip_{i}.mp4")
-            try:
-                data = requests.get(sd[0]["link"], timeout=30).content
-                with open(path, "wb") as f:
-                    f.write(data)
-                clips.append(path)
-            except Exception as e:
-                logger.warning(f"Video clip {i} download failed: {e}")
-    except Exception as e:
-        logger.warning(f"Pexels video search failed: {e}")
+    clips   = []
+
+    for query in queries:
+        if len(clips) >= count:
+            break
+        url = f"https://api.pexels.com/videos/search?query={query}&per_page=5&orientation=landscape"
+        try:
+            res = requests.get(url, headers=headers, timeout=10).json()
+            for video in res.get("videos", []):
+                if len(clips) >= count:
+                    break
+                files = sorted(video.get("video_files", []), key=lambda x: x.get("width", 9999))
+                sd    = [f for f in files if 0 < f.get("width", 0) <= 1280 and f.get("link")]
+                if not sd:
+                    continue
+                path = os.path.join(tmpdir, f"clip_{len(clips)}.mp4")
+                try:
+                    data = requests.get(sd[0]["link"], timeout=30).content
+                    with open(path, "wb") as f:
+                        f.write(data)
+                    clips.append(path)
+                except Exception as e:
+                    logger.warning(f"Video clip download failed: {e}")
+        except Exception as e:
+            logger.warning(f"Pexels video search failed for '{query}': {e}")
+
     return clips
 
 
@@ -287,35 +309,35 @@ def fetch_images(topic, count, tmpdir):
     if not PEXELS_API_KEY:
         return _placeholder_images(count, tmpdir)
 
+    queries = enrich_query(topic)
     headers = {"Authorization": PEXELS_API_KEY}
     photos  = []
-    page    = 1
-    while len(photos) < count and page <= 3:
-        fetch = min(count - len(photos), 80)
-        url   = (f"https://api.pexels.com/v1/search"
-                 f"?query={topic}&per_page={fetch}&page={page}&orientation=landscape")
+
+    for query in queries:
+        if len(photos) >= count:
+            break
+        want = min(count - len(photos), 30)
+        url  = (f"https://api.pexels.com/v1/search"
+                f"?query={query}&per_page={want}&page=1&orientation=landscape")
         try:
-            res = requests.get(url, headers=headers, timeout=10).json()
+            res   = requests.get(url, headers=headers, timeout=10).json()
             batch = res.get("photos", [])
-            if not batch:
-                break
             photos.extend(batch)
         except Exception as e:
-            logger.warning(f"Pexels image page {page} failed: {e}")
-            break
-        page += 1
+            logger.warning(f"Pexels image search failed for '{query}': {e}")
 
     paths = []
     for i, photo in enumerate(photos[:count]):
-        img_url = photo["src"]["large"]
+        # FIX 3: Use large2 (1880px wide) for sharper images before downscale
+        img_url = photo["src"].get("large2", photo["src"]["large"])
         path    = os.path.join(tmpdir, f"img_{i}.jpg")
         try:
             img_data = requests.get(img_url, timeout=15).content
             with open(path, "wb") as f:
                 f.write(img_data)
             with PILImage.open(path) as img:
-                img = img.convert("RGB").resize((854, 480), PILImage.LANCZOS)
-                img.save(path, "JPEG", quality=88)
+                img = img.convert("RGB").resize((W, H), PILImage.LANCZOS)
+                img.save(path, "JPEG", quality=92)
             paths.append(path)
         except Exception as e:
             logger.warning(f"Image {i} failed: {e}")
@@ -323,7 +345,6 @@ def fetch_images(topic, count, tmpdir):
     if not paths:
         return _placeholder_images(count, tmpdir)
 
-    # Loop downloaded images to fill count
     while len(paths) < count:
         paths.append(paths[len(paths) % len(paths)])
 
@@ -331,7 +352,6 @@ def fetch_images(topic, count, tmpdir):
 
 
 def _placeholder_images(count, tmpdir):
-    """Solid-color fallback images when Pexels fails."""
     colors = [
         (30, 35, 60), (20, 50, 80), (40, 20, 60),
         (20, 60, 40), (60, 30, 20), (50, 50, 20),
@@ -339,7 +359,7 @@ def _placeholder_images(count, tmpdir):
     paths = []
     for i in range(count):
         path = os.path.join(tmpdir, f"placeholder_{i}.jpg")
-        img  = PILImage.new("RGB", (854, 480), colors[i % len(colors)])
+        img  = PILImage.new("RGB", (W, H), colors[i % len(colors)])
         img.save(path, "JPEG")
         paths.append(path)
     return paths
@@ -363,18 +383,16 @@ def generate_voice(text, voice, output_path):
 
 # ─── RENDER ──────────────────────────────────────────────────────────────────
 
-W, H = 854, 480
-SECS_PER_SLOT = 5   # each image/clip slot is 5 seconds
-
-
 def make_zoom_clip(path, duration, direction="in"):
-    """Ken-Burns style zoom or pan on a still image."""
+    """
+    FIX 3: Zoom scale reduced from 1.08 → 1.04 to prevent blur on low-res images.
+    """
     clip = ImageClip(path).set_duration(duration)
 
     def zoom_in(get_frame, t):
         frame    = get_frame(t)
         progress = t / max(duration, 0.01)
-        scale    = 1.0 + 0.08 * progress
+        scale    = 1.0 + 0.04 * progress   # was 0.08 — halved to reduce blur
         nw, nh   = int(W * scale), int(H * scale)
         resized  = PILImage.fromarray(frame).resize((nw, nh), PILImage.LANCZOS)
         x, y     = (nw - W) // 2, (nh - H) // 2
@@ -383,7 +401,7 @@ def make_zoom_clip(path, duration, direction="in"):
     def pan_right(get_frame, t):
         frame    = get_frame(t)
         progress = t / max(duration, 0.01)
-        scale    = 1.08
+        scale    = 1.04                     # was 1.08
         nw, nh   = int(W * scale), int(H * scale)
         resized  = PILImage.fromarray(frame).resize((nw, nh), PILImage.LANCZOS)
         x        = int((nw - W) * progress)
@@ -395,19 +413,23 @@ def make_zoom_clip(path, duration, direction="in"):
 
 
 def make_subtitle_clip(text, duration):
+    """
+    FIX 4: Larger font (24→28), thicker stroke (1.5→2.5), white fill.
+    Makes subtitles readable over both dark and light footage.
+    """
     from moviepy.editor import TextClip
     try:
         txt = TextClip(
             text[:90],
-            fontsize=20,
+            fontsize=28,            # was 20
             color="white",
             stroke_color="black",
-            stroke_width=1.5,
+            stroke_width=2.5,       # was 1.5
             method="caption",
-            size=(W - 60, None),
-            font="DejaVu-Sans",
+            size=(W - 80, None),
+            font="DejaVu-Sans-Bold", # Bold variant for more contrast
         ).set_duration(duration)
-        return txt.set_position(("center", H - txt.h - 20))
+        return txt.set_position(("center", H - txt.h - 25))
     except Exception as e:
         logger.warning(f"Subtitle render failed: {e}")
         return None
@@ -415,23 +437,21 @@ def make_subtitle_clip(text, duration):
 
 def render_video(image_paths, video_clips, audio_path, output_path, script=None):
     """
-    BUG FIX 2: video_clips was accepted but never used — now properly interleaved.
-    BUG FIX 3: VideoFileClip was opened twice — now opened once and reused.
+    FIX 1: total_duration comes from actual audio file, not slot arithmetic.
+    Video is always trimmed/extended to match audio exactly.
     """
     audio          = AudioFileClip(audio_path)
-    total_duration = audio.duration
+    total_duration = audio.duration   # SOURCE OF TRUTH — drives everything
     total_slots    = max(4, int(total_duration / SECS_PER_SLOT) + 1)
 
-    logger.info(f"Render: {total_duration:.1f}s audio → {total_slots} slots × {SECS_PER_SLOT}s")
+    logger.info(f"Render: audio={total_duration:.1f}s → {total_slots} slots")
 
     # ── Build media schedule ─────────────────────────────────────────────────
-    # Spread video clips evenly; fill rest with images
-    schedule = []   # list of ("video"|"image", path)
-    vid_idx   = 0
-    img_idx   = 0
+    schedule = []
+    vid_idx  = 0
+    img_idx  = 0
 
     for i in range(total_slots):
-        # Place a video clip every 3rd slot if available
         if video_clips and vid_idx < len(video_clips) and i % 3 == 1:
             schedule.append(("video", video_clips[vid_idx]))
             vid_idx += 1
@@ -449,58 +469,50 @@ def render_video(image_paths, video_clips, audio_path, output_path, script=None)
             subtitle_chunks.append(" ".join(chunk))
 
     # ── Build clips ──────────────────────────────────────────────────────────
-    clips = []
+    clips   = []
     effects = ["in", "pan", "in", "pan", "in", "pan"]
 
     for i, (media_type, path) in enumerate(schedule):
-        slot_dur = SECS_PER_SLOT
+        # Last slot gets remaining duration so video matches audio exactly
+        if i == len(schedule) - 1:
+            slot_dur = total_duration - (SECS_PER_SLOT * (len(schedule) - 1))
+            slot_dur = max(1.0, slot_dur)
+        else:
+            slot_dur = SECS_PER_SLOT
 
         try:
             if media_type == "video":
-                # BUG FIX: open once, read duration, subclip, resize
                 vc       = VideoFileClip(path)
                 clip_dur = min(slot_dur, vc.duration)
-                base     = vc.subclip(0, clip_dur).resize((W, H))
-                if clip_dur < slot_dur:
-                    # Pad with freeze-frame if clip shorter than slot
-                    base = base.set_duration(slot_dur)
+                base     = vc.subclip(0, clip_dur).resize((W, H)).set_duration(slot_dur)
             else:
                 direction = effects[i % len(effects)]
                 base      = make_zoom_clip(path, slot_dur, direction)
 
         except Exception as e:
-            logger.warning(f"Slot {i} ({media_type}) failed: {e} — using fallback image")
+            logger.warning(f"Slot {i} ({media_type}) failed: {e} — fallback image")
             fallback = image_paths[i % len(image_paths)]
             base     = ImageClip(fallback).set_duration(slot_dur).resize((W, H))
 
-        base = base.fadein(0.35).fadeout(0.35)
+        base = base.fadein(0.3).fadeout(0.3)
 
-        # Subtitle overlay
         layers = [base]
         if subtitle_chunks and i < len(subtitle_chunks) and subtitle_chunks[i]:
             sub = make_subtitle_clip(subtitle_chunks[i], slot_dur)
             if sub:
                 layers.append(sub)
 
-        if len(layers) > 1:
-            final = CompositeVideoClip(layers, size=(W, H)).set_duration(slot_dur)
-        else:
-            final = base
-
+        final = CompositeVideoClip(layers, size=(W, H)).set_duration(slot_dur) if len(layers) > 1 else base
         clips.append(final)
 
-    # ── Concatenate & set audio ───────────────────────────────────────────────
+    # ── Concatenate ───────────────────────────────────────────────────────────
     video = concatenate_videoclips(clips, method="compose")
 
-    # Trim/extend video to match audio exactly
+    # Safety trim: ensure video never exceeds audio
     if video.duration > total_duration:
         video = video.subclip(0, total_duration)
-    elif video.duration < total_duration:
-        last  = clips[-1].set_duration(clips[-1].duration + (total_duration - video.duration))
-        clips[-1] = last
-        video = concatenate_videoclips(clips, method="compose")
 
-    # Background music (optional — silently skip if fails)
+    # ── Background music ──────────────────────────────────────────────────────
     try:
         music_path = os.path.join(os.path.dirname(audio_path), "bg_music.mp3")
         bg_data    = requests.get(
